@@ -10,12 +10,10 @@ public class Hand {
     public Hand() {
     }
 
-    // 1. Just accept a String. The Player will hand this to you.
     public void addCard(String card) {
         this.playerCards.add(card);
     }
 
-    // 2. Calculate the score based ONLY on the cards currently in this hand
     public int calculateScore() {
         int tempScore = 0;
 
@@ -32,7 +30,18 @@ public class Hand {
         return this.score;
     }
 
-    // 3. Check if THIS specific hand has busted
+    public int getCardsCount() {
+        return this.playerCards.size();
+    }
+
+    public String getCard(int index) {
+        return this.playerCards.get(index);
+    }
+
+    public void removeCard(int index) {
+        this.playerCards.remove(index);
+    }
+
     public boolean isBusted() {
         return calculateScore() > 21;
     }
