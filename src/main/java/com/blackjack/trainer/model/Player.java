@@ -96,10 +96,17 @@ public class Player {
     }
 
     public void resetForNewRound() {
+        resetForNewRound(1);
+    }
+
+    public void resetForNewRound(int numberOfHands) {
+        int count = Math.max(1, numberOfHands);
         this.myHands.clear();
         this.handBets.clear();
-        this.myHands.add(new Hand());
-        this.handBets.add(this.initialBet);
+        for (int i = 0; i < count; i++) {
+            this.myHands.add(new Hand());
+            this.handBets.add(this.initialBet);
+        }
     }
 
     public int BuyIn(int startAmount) {
@@ -282,9 +289,8 @@ public class Player {
         String card2 = currentHand.getCard(1);
         int currentBet = getHandBet(handIndex);
 
-        // Deduct matching bet for the new split hand
+        // Deduct matching bet for the new split hand and insert directly after the current hand
         this.chips -= currentBet;
-        this.handBets.add(currentBet);
 
         Hand splitHand = new Hand();
         splitHand.addCard(card2);
@@ -298,7 +304,8 @@ public class Player {
             splitHand.addCard(deal2);
         }
 
-        this.myHands.add(splitHand);
+        this.myHands.add(handIndex + 1, splitHand);
+        this.handBets.add(handIndex + 1, currentBet);
         return true;
     }
 

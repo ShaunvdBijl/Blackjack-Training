@@ -46,6 +46,7 @@ public class MainFrame extends JFrame {
 
     // Config controls
     private JSpinner betSpinner;
+    private JSpinner handsSpinner;
     private JSpinner decksSpinner;
     private JButton buyInButton;
     private JButton shuffleButton;
@@ -127,6 +128,24 @@ public class MainFrame extends JFrame {
         betSpinner = new JSpinner(new SpinnerNumberModel(50, 10, 10000, 10));
         betSpinner.setPreferredSize(new Dimension(70, 28));
 
+        JLabel handsPrompt = new JLabel("Hands:");
+        handsPrompt.setForeground(Color.WHITE);
+        handsPrompt.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        handsSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 5, 1));
+        handsSpinner.setPreferredSize(new Dimension(48, 28));
+        handsSpinner.addChangeListener(e -> {
+            if (!roundActive) {
+                player.setInitialBet((int) betSpinner.getValue());
+                player.resetForNewRound((int) handsSpinner.getValue());
+                refreshAllUI();
+            }
+        });
+        betSpinner.addChangeListener(e -> {
+            if (!roundActive) {
+                refreshAllUI();
+            }
+        });
+
         JLabel deckPrompt = new JLabel("Decks:");
         deckPrompt.setForeground(Color.WHITE);
         deckPrompt.setFont(new Font("Segoe UI", Font.BOLD, 13));
@@ -185,6 +204,8 @@ public class MainFrame extends JFrame {
 
         configPanel.add(betPrompt);
         configPanel.add(betSpinner);
+        configPanel.add(handsPrompt);
+        configPanel.add(handsSpinner);
         configPanel.add(deckPrompt);
         configPanel.add(decksSpinner);
         configPanel.add(shuffleButton);
@@ -544,16 +565,20 @@ public class MainFrame extends JFrame {
     }
 
     private void startNewRound() {
-        int betAmount = (int) betSpinner.getValue();
-        if (player.getChips() < betAmount) {
+        int betPerHand = (int) betSpinner.getValue();
+        int startingHandsCount = (int) handsSpinner.getValue();
+        int totalBetRequired = betPerHand * startingHandsCount;
+
+        if (player.getChips() < totalBetRequired) {
             JOptionPane.showMessageDialog(this,
-                    "Not enough chips for a $" + betAmount + " bet! Use 'Buy-In' or lower your bet.",
+                    String.format("Not enough chips for %d hand(s) at $%d each (Total: $%d)! Use 'Buy-In' or lower your bet/hands.",
+                            startingHandsCount, betPerHand, totalBetRequired),
                     "Insufficient Chips", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        // Auto-shuffle if shoe has fewer than 15 cards
-        if (deck.cardsRemaining() < 15) {
+        // Auto-shuffle if shoe has fewer than 15 cards (or 6 * startingHandsCount)
+        if (deck.cardsRemaining() < Math.max(15, startingHandsCount * 6)) {
             int numDecks = (int) decksSpinner.getValue();
             deck.ShuffleDeck(numDecks);
             log("--- Shoe low on cards! Auto-shuffled " + numDecks + " deck(s). Count reset to 0. ---");
@@ -563,24 +588,26 @@ public class MainFrame extends JFrame {
         double preDealTrueCount = deck.getTrueCount();
         int recBet = deck.getRecommendedBetAmount(BASE_BET_UNIT);
         int recUnits = deck.getRecommendedBetUnits();
-        System.out.printf("[True Count Check] Pre-deal Running Count: %d | Decks Left: %.2f | True Count: %+.1f | Your Bet: $%d | Recommended Bet (%dx): $%d%n",
-                deck.getCount(), deck.getDecksRemaining(), preDealTrueCount, betAmount, recUnits, recBet);
+        System.out.printf("[True Count Check] Pre-deal Running Count: %d | Decks Left: %.2f | True Count: %+.1f | Playing %d Hand(s) @ $%d each (Total: $%d) | Recommended Bet/Hand (%dx): $%d%n",
+                deck.getCount(), deck.getDecksRemaining(), preDealTrueCount, startingHandsCount, betPerHand, totalBetRequired, recUnits, recBet);
 
         roundActive = true;
         dealerCardRevealed = false;
         currentHandIndex = 0;
 
-        player.setInitialBet(betAmount);
-        player.resetForNewRound();
-        player.deductChips(betAmount);
+        player.setInitialBet(betPerHand);
+        player.resetForNewRound(startingHandsCount);
+        player.deductChips(totalBetRequired);
 
         dealerHand.clear();
 
-        // Deal 2 cards to Player (both face up & tracked in count)
-        String p1 = deck.drawCardAndTrack();
-        String p2 = deck.drawCardAndTrack();
-        player.getPrimaryHand().addCard(p1);
-        player.getPrimaryHand().addCard(p2);
+        // Deal 2 cards to each starting Player hand
+        for (int i = 0; i < startingHandsCount; i++) {
+            String p1 = deck.drawCardAndTrack();
+            String p2 = deck.drawCardAndTrack();
+            player.getHand(i).addCard(p1);
+            player.getHand(i).addCard(p2);
+        }
 
         // Deal 2 cards to Dealer (1st face up & tracked; 2nd face down, tracked only when revealed)
         String d1 = deck.drawCardAndTrack();
@@ -589,17 +616,28 @@ public class MainFrame extends JFrame {
         dealerHand.addCard(d2);
 
         log("==========================================");
-        log("New Round Started | Bet: $" + betAmount + " | Dealer shows: " + Hand.formatSingleCard(d1));
-        log("Your Hand: " + player.getPrimaryHand().formatCards() + " (Score: " + player.getPrimaryHand().calculateScore() + ")");
+        log(String.format("New Round Started | %d Hand(s) @ $%d each (Total Bet: $%d) | Dealer shows: %s",
+                startingHandsCount, betPerHand, totalBetRequired, Hand.formatSingleCard(d1)));
+        for (int i = 0; i < startingHandsCount; i++) {
+            Hand h = player.getHand(i);
+            log(String.format("  Hand %d: %s (Score: %d)%s",
+                    i + 1, h.formatCards(), h.calculateScore(), player.hasBlackjack(i) ? " [BLACKJACK!]" : ""));
+        }
 
-        // Check for immediate Natural Blackjack
-        if (player.hasBlackjack(0)) {
-            statusBannerLabel.setText("NATURAL BLACKJACK! Checking Dealer's hand...");
+        // Advance past any initial hands that already have a Natural 21
+        while (currentHandIndex < player.getHandCount() && player.getHand(currentHandIndex).calculateScore() == 21) {
+            log("Hand " + (currentHandIndex + 1) + " has 21! Auto-standing.");
+            currentHandIndex++;
+        }
+
+        if (currentHandIndex >= player.getHandCount()) {
+            statusBannerLabel.setText("All hands reached 21! Resolving Dealer's hand...");
             revealDealerAndFinishRound();
             return;
         }
 
-        statusBannerLabel.setText("Playing Hand 1 — Choose Hit, Stand, Double Down, or Split");
+        statusBannerLabel.setText("Playing Hand " + (currentHandIndex + 1) + " of " + player.getHandCount()
+                + " — Choose Hit, Stand, Double Down, or Split");
         refreshAllUI();
     }
 
@@ -674,10 +712,17 @@ public class MainFrame extends JFrame {
     }
 
     private void advanceToNextHandOrDealer() {
-        if (currentHandIndex + 1 < player.getHandCount()) {
+        currentHandIndex++;
+        while (currentHandIndex < player.getHandCount()
+                && player.getHand(currentHandIndex).calculateScore() == 21) {
+            log("Hand " + (currentHandIndex + 1) + " already has 21! Auto-standing.");
             currentHandIndex++;
+        }
+
+        if (currentHandIndex < player.getHandCount()) {
             Hand nextHand = player.getHand(currentHandIndex);
-            statusBannerLabel.setText("Now playing Hand " + (currentHandIndex + 1) + " (Score: " + nextHand.calculateScore() + ")");
+            statusBannerLabel.setText("Now playing Hand " + (currentHandIndex + 1)
+                    + " of " + player.getHandCount() + " (Score: " + nextHand.calculateScore() + ")");
             refreshAllUI();
         } else {
             revealDealerAndFinishRound();
@@ -694,10 +739,10 @@ public class MainFrame extends JFrame {
                     + " -> Dealer Hand: " + dealerHand.formatCards() + " (Score: " + dealerHand.calculateScore() + ")");
         }
 
-        // Dealer only draws if at least one player hand is not busted and not a natural blackjack
+        // Dealer only draws if at least one player hand is not busted and not a 2-card 21
         boolean anyHandNeedsDealerPlay = false;
         for (int i = 0; i < player.getHandCount(); i++) {
-            if (!player.isBusted(i) && !(player.hasBlackjack(i) && player.getHandCount() == 1)) {
+            if (!player.isBusted(i) && !player.hasBlackjack(i)) {
                 anyHandNeedsDealerPlay = true;
                 break;
             }
@@ -732,19 +777,19 @@ public class MainFrame extends JFrame {
                 String msg = handLabel + " Busted (-$" + bet + ")";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
-            } else if (player.hasBlackjack(i) && player.getHandCount() == 1) {
+            } else if (player.hasBlackjack(i)) {
                 if (dealerBlackjack) {
                     player.pushBet(i);
                     outcome = "PUSH";
                     netChips = 0;
-                    String msg = "Push (Both have Blackjack)";
+                    String msg = handLabel + " Push (Both Blackjack)";
                     log("Result: " + msg);
                     summary.append(msg).append("   ");
                 } else {
                     int payout = player.winBet(i, 2.5); // 3:2 Blackjack payout
                     outcome = "BLACKJACK";
                     netChips = payout - bet;
-                    String msg = "BLACKJACK! Won +$" + netChips;
+                    String msg = handLabel + " BLACKJACK! (+" + "$" + netChips + ")";
                     log("Result: " + msg + " (Total payout: $" + payout + ")");
                     summary.append(msg).append("   ");
                 }
@@ -791,7 +836,8 @@ public class MainFrame extends JFrame {
     private void refreshAllUI() {
         // Update top badges
         chipsLabel.setText("Chips: $" + player.getChips());
-        betLabel.setText("Active Bet: $" + (roundActive ? player.getTotalActiveBets() : betSpinner.getValue()));
+        int plannedTotalBet = ((int) betSpinner.getValue()) * ((int) handsSpinner.getValue());
+        betLabel.setText("Active Bet: $" + (roundActive ? player.getTotalActiveBets() : plannedTotalBet));
         countLabel.setText("Running Count: " + (showRunningCount ? deck.getCount() : "HIDDEN"));
         if (showTrueCount) {
             double tc = deck.getTrueCount();
@@ -869,6 +915,7 @@ public class MainFrame extends JFrame {
         // Update Buttons state
         dealButton.setEnabled(!roundActive);
         betSpinner.setEnabled(!roundActive);
+        handsSpinner.setEnabled(!roundActive);
         decksSpinner.setEnabled(!roundActive);
         shuffleButton.setEnabled(!roundActive);
 
