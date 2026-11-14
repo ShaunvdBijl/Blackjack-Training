@@ -1,7 +1,7 @@
 # ==============================================================================
 # Stage 1: Build the Spring Boot application with Maven & JDK 17
 # ==============================================================================
-FROM maven:3.9.9-eclipse-temurin-17 AS builder
+FROM maven:3.9-eclipse-temurin-26 AS builder
 
 WORKDIR /workspace
 
