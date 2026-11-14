@@ -71,6 +71,51 @@ public class Deck {
         return this.count;
     }
 
+    /**
+     * Returns the exact number of 52-card decks remaining in the shoe.
+     */
+    public double getDecksRemaining() {
+        int remaining = cardsRemaining();
+        if (remaining <= 0) {
+            return 0.0;
+        }
+        return remaining / 52.0;
+    }
+
+    /**
+     * Calculates the Hi-Lo True Count: Running Count divided by Decks Remaining.
+     */
+    public double getTrueCount() {
+        double decksLeft = getDecksRemaining();
+        if (decksLeft <= 0.0) {
+            return 0.0;
+        }
+        // Protect against extreme division if fewer than 0.25 decks (13 cards) remain
+        double divisor = Math.max(decksLeft, 0.25);
+        return Math.round((this.count / divisor) * 10.0) / 10.0;
+    }
+
+    /**
+     * Returns the recommended bet multiplier (in units) based on the floored True Count:
+     * TC <= 1 -> 1x base unit
+     * TC == 2 -> 2x base unit
+     * TC == 3 -> 4x base unit
+     * TC == 4 -> 6x base unit
+     * TC >= 5 -> 8x base unit
+     */
+    public int getRecommendedBetUnits() {
+        int flooredTc = (int) Math.floor(getTrueCount());
+        if (flooredTc <= 1) return 1;
+        if (flooredTc == 2) return 2;
+        if (flooredTc == 3) return 4;
+        if (flooredTc == 4) return 6;
+        return 8;
+    }
+
+    public int getRecommendedBetAmount(int baseUnit) {
+        return baseUnit * getRecommendedBetUnits();
+    }
+
     public void setCount() {
         String rank = setDrawnCard();
         if (rank != null) {
