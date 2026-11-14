@@ -1,9 +1,0 @@
-com\blackjack\trainer\model\BasicStrategyAssistor.class
-com\blackjack\trainer\model\BasicStrategyAssistor$Advice.class
-com\blackjack\trainer\model\Hand.class
-com\blackjack\trainer\ui\MainFrame.class
-com\blackjack\trainer\model\Deck.class
-com\blackjack\trainer\BlackjackTrainerApplication.class
-com\blackjack\trainer\model\Player.class
-com\blackjack\trainer\model\Player$1.class
-com\blackjack\trainer\model\Player$PlayerAction.class

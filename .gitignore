@@ -1,7 +1,21 @@
-### IntelliJ IDEA ###
+### Environment Variables & Secrets ###
+.env
+.env.*
+!.env.example
+application-local.properties
+
+### Maven & Build Outputs ###
+target/
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
+.mvn/wrapper/maven-wrapper.jar
+
+### IntelliJ IDEA ###
+.idea/
+*.iml
+*.iws
+*.ipr
 .kotlin
 
 ### Eclipse ###
@@ -26,5 +40,6 @@ bin/
 ### VS Code ###
 .vscode/
 
-### Mac OS ###
+### OS Files ###
 .DS_Store
+Thumbs.db
