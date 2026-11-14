@@ -1,14 +1,18 @@
 package com.blackjack.trainer.ui;
 
+import com.blackjack.trainer.model.BasicStrategyAssistor;
+import com.blackjack.trainer.model.BasicStrategyAssistor.Advice;
 import com.blackjack.trainer.model.Deck;
 import com.blackjack.trainer.model.Hand;
 import com.blackjack.trainer.model.Player;
+import com.blackjack.trainer.model.Player.PlayerAction;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import java.awt.*;
+import java.io.File;
 import java.util.List;
 
 @Component
@@ -21,6 +25,7 @@ public class MainFrame extends JFrame {
     private boolean dealerCardRevealed = false;
     private boolean showRunningCount = true;
     private boolean showCardsRemaining = true;
+    private boolean showStrategyAssistor = false;
     private int currentHandIndex = 0;
 
     // Header labels
@@ -34,12 +39,15 @@ public class MainFrame extends JFrame {
     private JSpinner decksSpinner;
     private JButton buyInButton;
     private JButton shuffleButton;
+    private JToggleButton toggleStrategyButton;
+    private JButton viewChartButton;
 
     // Table Visual Components
     private JPanel dealerCardsPanel;
     private JLabel dealerScoreLabel;
     private JPanel playerHandsContainer;
     private JLabel statusBannerLabel;
+    private JLabel strategyAssistorBanner;
 
     // Log area
     private JTextArea logArea;
@@ -68,8 +76,8 @@ public class MainFrame extends JFrame {
     private void initUI() {
         setTitle("Blackjack Trainer — Spring Boot & Swing");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(980, 720);
-        setMinimumSize(new Dimension(860, 650));
+        setSize(1040, 760);
+        setMinimumSize(new Dimension(920, 680));
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(0, 0));
 
@@ -91,8 +99,8 @@ public class MainFrame extends JFrame {
         statsPanel.add(countLabel);
         statsPanel.add(cardsRemainingLabel);
 
-        // Settings bar (Buy-in, Bet amount, Deck count, Shuffle)
-        JPanel configPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 6));
+        // Settings bar (Buy-in, Bet amount, Deck count, Shuffle, Strategy Assistor Toggle)
+        JPanel configPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
         configPanel.setBackground(new Color(30, 41, 59));
         configPanel.setBorder(new EmptyBorder(4, 10, 4, 10));
 
@@ -113,6 +121,14 @@ public class MainFrame extends JFrame {
         toggleCountButton = createSmallButton("Hide Count", new Color(100, 116, 139));
         toggleCardsLeftButton = createSmallButton("Hide Cards Left", new Color(100, 116, 139));
 
+        toggleStrategyButton = new JToggleButton("Strategy Assistor: OFF");
+        toggleStrategyButton.setBackground(new Color(71, 85, 105));
+        toggleStrategyButton.setForeground(Color.WHITE);
+        toggleStrategyButton.setFocusPainted(false);
+        toggleStrategyButton.setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        viewChartButton = createSmallButton("View Chart", new Color(99, 102, 241));
+
         shuffleButton.addActionListener(e -> manualShuffle());
         buyInButton.addActionListener(e -> promptBuyIn());
         toggleCountButton.addActionListener(e -> {
@@ -127,17 +143,30 @@ public class MainFrame extends JFrame {
             log("Cards Left is now " + (showCardsRemaining ? "VISIBLE (" + deck.cardsRemaining() + ")" : "HIDDEN"));
             refreshAllUI();
         });
+        toggleStrategyButton.addActionListener(e -> {
+            showStrategyAssistor = toggleStrategyButton.isSelected();
+            toggleStrategyButton.setText(showStrategyAssistor ? "Strategy Assistor: ON" : "Strategy Assistor: OFF");
+            toggleStrategyButton.setBackground(showStrategyAssistor ? new Color(16, 185, 129) : new Color(71, 85, 105));
+            String stateMsg = showStrategyAssistor ? "ENABLED" : "DISABLED";
+            log("Basic Strategy Assistor UI is now " + stateMsg + " (Console play evaluation is always active).");
+            System.out.println("[Basic Strategy Assistor] Visual Assistor toggled " + stateMsg);
+            refreshAllUI();
+        });
+        viewChartButton.addActionListener(e -> showStrategyChartDialog());
 
         configPanel.add(betPrompt);
         configPanel.add(betSpinner);
-        configPanel.add(Box.createHorizontalStrut(8));
+        configPanel.add(Box.createHorizontalStrut(4));
         configPanel.add(deckPrompt);
         configPanel.add(decksSpinner);
         configPanel.add(shuffleButton);
         configPanel.add(buyInButton);
-        configPanel.add(Box.createHorizontalStrut(8));
+        configPanel.add(Box.createHorizontalStrut(4));
         configPanel.add(toggleCountButton);
         configPanel.add(toggleCardsLeftButton);
+        configPanel.add(Box.createHorizontalStrut(4));
+        configPanel.add(toggleStrategyButton);
+        configPanel.add(viewChartButton);
 
         topContainer.add(statsPanel, BorderLayout.NORTH);
         topContainer.add(configPanel, BorderLayout.SOUTH);
@@ -167,13 +196,30 @@ public class MainFrame extends JFrame {
         dealerSection.add(dealerScoreLabel, BorderLayout.NORTH);
         dealerSection.add(dealerCardsPanel, BorderLayout.CENTER);
 
-        // Status Banner in middle of table
+        // Status Banner + Strategy Assistor Banner in middle of table
+        JPanel bannersPanel = new JPanel(new GridLayout(0, 1, 0, 6));
+        bannersPanel.setOpaque(false);
+
         statusBannerLabel = new JLabel("Set your bet and click 'Deal Hand' to begin!", SwingConstants.CENTER);
         statusBannerLabel.setFont(new Font("Segoe UI", Font.BOLD, 17));
         statusBannerLabel.setForeground(Color.WHITE);
         statusBannerLabel.setOpaque(true);
-        statusBannerLabel.setBackground(new Color(15, 23, 42, 200));
+        statusBannerLabel.setBackground(new Color(15, 23, 42));
         statusBannerLabel.setBorder(new EmptyBorder(8, 16, 8, 16));
+
+        strategyAssistorBanner = new JLabel("Basic Strategy Assistor: Waiting for hand...", SwingConstants.CENTER);
+        strategyAssistorBanner.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        strategyAssistorBanner.setForeground(new Color(254, 240, 138));
+        strategyAssistorBanner.setOpaque(true);
+        strategyAssistorBanner.setBackground(new Color(30, 58, 138));
+        strategyAssistorBanner.setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(new Color(250, 204, 21), 2, true),
+                new EmptyBorder(6, 14, 6, 14)
+        ));
+        strategyAssistorBanner.setVisible(false);
+
+        bannersPanel.add(statusBannerLabel);
+        bannersPanel.add(strategyAssistorBanner);
 
         // Player Hands Section (supports multiple split hands)
         playerHandsContainer = new JPanel(new GridLayout(1, 0, 15, 0));
@@ -181,7 +227,7 @@ public class MainFrame extends JFrame {
 
         JPanel centerTableBody = new JPanel(new BorderLayout(8, 12));
         centerTableBody.setOpaque(false);
-        centerTableBody.add(statusBannerLabel, BorderLayout.NORTH);
+        centerTableBody.add(bannersPanel, BorderLayout.NORTH);
         centerTableBody.add(playerHandsContainer, BorderLayout.CENTER);
 
         tableFelt.add(dealerSection, BorderLayout.NORTH);
@@ -232,6 +278,76 @@ public class MainFrame extends JFrame {
         actionPanel.add(splitButton);
 
         add(actionPanel, BorderLayout.SOUTH);
+    }
+
+    // ==================== BASIC STRATEGY EVALUATION & LOGGING ====================
+
+    /**
+     * Evaluates the player's chosen action against Basic Strategy BEFORE the hand is mutated,
+     * and ALWAYS logs to the terminal console (System.out) whether the play was correct,
+     * even when the Basic Strategy Assistor toggle is switched OFF.
+     */
+    private void evaluateAndLogPlayToConsole(PlayerAction chosenAction) {
+        if (!roundActive || dealerHand.getCardsCount() == 0) {
+            return;
+        }
+        Hand activeHand = player.getHand(currentHandIndex);
+        if (activeHand == null) {
+            return;
+        }
+
+        String dealerUpCard = dealerHand.getCard(0);
+        boolean canSplit = player.canSplit(currentHandIndex);
+        boolean canDouble = player.canDouble(currentHandIndex);
+
+        Advice advice = BasicStrategyAssistor.getBestPlay(activeHand, dealerUpCard, canSplit, canDouble);
+        boolean isCorrect = (chosenAction == advice.recommendedAction());
+
+        String consoleMessage;
+        if (isCorrect) {
+            consoleMessage = String.format(
+                    "[Basic Strategy Check] CORRECT PLAY! You chose %s on %s (Score: %d) vs Dealer %s. (%s)",
+                    chosenAction,
+                    activeHand.formatCards(),
+                    activeHand.calculateScore(),
+                    Hand.formatSingleCard(dealerUpCard),
+                    advice.explanation()
+            );
+        } else {
+            consoleMessage = String.format(
+                    "[Basic Strategy Check] INCORRECT PLAY! You chose %s, but Basic Strategy recommends %s on %s (Score: %d) vs Dealer %s. (%s)",
+                    chosenAction,
+                    advice.recommendedAction(),
+                    activeHand.formatCards(),
+                    activeHand.calculateScore(),
+                    Hand.formatSingleCard(dealerUpCard),
+                    advice.explanation()
+            );
+        }
+
+        // Always print to standard console output regardless of toggle state
+        System.out.println(consoleMessage);
+
+        // If the assistor toggle is ON, also record feedback in the UI log
+        if (showStrategyAssistor) {
+            log(consoleMessage);
+        }
+    }
+
+    private void showStrategyChartDialog() {
+        File chartFile = new File("basicStrategy.png");
+        if (!chartFile.exists()) {
+            chartFile = new File("Blackjack-Practise/basicStrategy.png");
+        }
+        if (chartFile.exists()) {
+            ImageIcon icon = new ImageIcon(chartFile.getAbsolutePath());
+            JLabel imgLabel = new JLabel(icon);
+            JScrollPane scroll = new JScrollPane(imgLabel);
+            scroll.setPreferredSize(new Dimension(450, 620));
+            JOptionPane.showMessageDialog(this, scroll, "Basic Strategy Reference Chart", JOptionPane.PLAIN_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(this, "Could not locate basicStrategy.png in project root.", "Chart Not Found", JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     // ==================== GAMEPLAY ACTIONS ====================
@@ -320,6 +436,8 @@ public class MainFrame extends JFrame {
     private void handleHit() {
         if (!roundActive) return;
 
+        evaluateAndLogPlayToConsole(PlayerAction.HIT);
+
         String drawn = player.hit(deck, currentHandIndex);
         Hand activeHand = player.getHand(currentHandIndex);
         int score = activeHand.calculateScore();
@@ -342,6 +460,8 @@ public class MainFrame extends JFrame {
     private void handleStand() {
         if (!roundActive) return;
 
+        evaluateAndLogPlayToConsole(PlayerAction.STAND);
+
         Hand activeHand = player.getHand(currentHandIndex);
         player.stand(currentHandIndex);
         log("Hand " + (currentHandIndex + 1) + " STANDS at " + activeHand.calculateScore() + ".");
@@ -350,6 +470,8 @@ public class MainFrame extends JFrame {
 
     private void handleDoubleDown() {
         if (!roundActive || !player.canDouble(currentHandIndex)) return;
+
+        evaluateAndLogPlayToConsole(PlayerAction.DOUBLE);
 
         String drawn = player.doubleHand(deck, currentHandIndex);
         Hand activeHand = player.getHand(currentHandIndex);
@@ -366,6 +488,8 @@ public class MainFrame extends JFrame {
 
     private void handleSplit() {
         if (!roundActive || !player.canSplit(currentHandIndex)) return;
+
+        evaluateAndLogPlayToConsole(PlayerAction.SPLIT);
 
         boolean ok = player.split(deck, currentHandIndex);
         if (ok) {
@@ -444,12 +568,12 @@ public class MainFrame extends JFrame {
                     summary.append(msg).append("   ");
                 }
             } else if (dScore > 21) {
-                int payout = player.winBet(i, 2.0);
+                player.winBet(i, 2.0);
                 String msg = handLabel + " Wins! Dealer Busted (+$" + bet + ")";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
             } else if (pScore > dScore) {
-                int payout = player.winBet(i, 2.0);
+                player.winBet(i, 2.0);
                 String msg = handLabel + " Wins " + pScore + " vs " + dScore + " (+$" + bet + ")";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
@@ -478,6 +602,25 @@ public class MainFrame extends JFrame {
         betLabel.setText("Active Bet: $" + (roundActive ? player.getTotalActiveBets() : betSpinner.getValue()));
         countLabel.setText("Running Count: " + (showRunningCount ? deck.getCount() : "HIDDEN"));
         cardsRemainingLabel.setText("Cards Left: " + (showCardsRemaining ? deck.cardsRemaining() : "HIDDEN"));
+
+        // Update Basic Strategy Assistor Banner
+        strategyAssistorBanner.setVisible(showStrategyAssistor);
+        if (showStrategyAssistor) {
+            if (roundActive && dealerHand.getCardsCount() > 0) {
+                Hand activeHand = player.getHand(currentHandIndex);
+                String dealerUpCard = dealerHand.getCard(0);
+                Advice advice = BasicStrategyAssistor.getBestPlay(
+                        activeHand,
+                        dealerUpCard,
+                        player.canSplit(currentHandIndex),
+                        player.canDouble(currentHandIndex)
+                );
+                strategyAssistorBanner.setText("★ Basic Strategy Assistor: Best Play is "
+                        + advice.recommendedAction() + " — [" + advice.explanation() + "]");
+            } else {
+                strategyAssistorBanner.setText("★ Basic Strategy Assistor: Deal a hand to see real-time optimal play advice.");
+            }
+        }
 
         // Update Dealer Cards
         dealerCardsPanel.removeAll();

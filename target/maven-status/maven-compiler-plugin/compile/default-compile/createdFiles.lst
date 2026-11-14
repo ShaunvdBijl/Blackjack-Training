@@ -1,3 +1,5 @@
+com\blackjack\trainer\model\BasicStrategyAssistor.class
+com\blackjack\trainer\model\BasicStrategyAssistor$Advice.class
 com\blackjack\trainer\model\Hand.class
 com\blackjack\trainer\ui\MainFrame.class
 com\blackjack\trainer\model\Deck.class

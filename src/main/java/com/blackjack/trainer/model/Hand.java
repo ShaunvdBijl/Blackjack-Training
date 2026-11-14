@@ -48,6 +48,41 @@ public class Hand {
         return this.score;
     }
 
+    public boolean isSoft() {
+        int tempScore = 0;
+        int aceCount = 0;
+
+        for (String card : this.playerCards) {
+            int cardValue = Integer.parseInt(card.substring(0, 2));
+            if (cardValue == 1) {
+                aceCount++;
+                tempScore += 11;
+            } else if (cardValue >= 11 && cardValue <= 13) {
+                tempScore += 10;
+            } else {
+                tempScore += cardValue;
+            }
+        }
+
+        while (tempScore > 21 && aceCount > 0) {
+            tempScore -= 10;
+            aceCount--;
+        }
+
+        return aceCount > 0 && tempScore <= 21;
+    }
+
+    public static int getCardBjValue(String card) {
+        if (card == null || card.length() < 2) {
+            return 0;
+        }
+        int val = Integer.parseInt(card.substring(0, 2));
+        if (val == 1) {
+            return 11; // Ace
+        }
+        return Math.min(val, 10);
+    }
+
     public boolean canSplit() {
         if (this.playerCards.size() != 2) {
             return false;
