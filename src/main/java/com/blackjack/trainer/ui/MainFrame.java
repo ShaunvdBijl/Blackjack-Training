@@ -6,11 +6,16 @@ import com.blackjack.trainer.model.Deck;
 import com.blackjack.trainer.model.Hand;
 import com.blackjack.trainer.model.Player;
 import com.blackjack.trainer.model.Player.PlayerAction;
+import com.blackjack.trainer.service.BlackjackDatabaseService;
+import com.blackjack.trainer.service.BlackjackDatabaseService.OverallStats;
+import com.blackjack.trainer.service.BlackjackDatabaseService.RoundRecord;
+import com.blackjack.trainer.service.BlackjackDatabaseService.StrategyErrorRecord;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.File;
 import java.util.List;
@@ -20,6 +25,7 @@ public class MainFrame extends JFrame {
     private final Deck deck;
     private final Player player;
     private final Hand dealerHand;
+    private final BlackjackDatabaseService dbService;
 
     private boolean roundActive = false;
     private boolean dealerCardRevealed = false;
@@ -33,6 +39,7 @@ public class MainFrame extends JFrame {
     private JLabel betLabel;
     private JLabel countLabel;
     private JLabel cardsRemainingLabel;
+    private JLabel dbStatsBadgeLabel;
 
     // Config controls
     private JSpinner betSpinner;
@@ -41,6 +48,7 @@ public class MainFrame extends JFrame {
     private JButton shuffleButton;
     private JToggleButton toggleStrategyButton;
     private JButton viewChartButton;
+    private JButton dbStatsButton;
 
     // Table Visual Components
     private JPanel dealerCardsPanel;
@@ -61,7 +69,8 @@ public class MainFrame extends JFrame {
     private JButton toggleCountButton;
     private JButton toggleCardsLeftButton;
 
-    public MainFrame() {
+    public MainFrame(BlackjackDatabaseService dbService) {
+        this.dbService = dbService;
         this.deck = new Deck();
         this.player = new Player(1000);
         this.dealerHand = new Hand();
@@ -74,10 +83,10 @@ public class MainFrame extends JFrame {
     }
 
     private void initUI() {
-        setTitle("Blackjack Trainer — Spring Boot & Swing");
+        setTitle("Blackjack Trainer — Spring Boot, Swing & PostgreSQL");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1040, 760);
-        setMinimumSize(new Dimension(920, 680));
+        setSize(1120, 770);
+        setMinimumSize(new Dimension(960, 680));
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(0, 0));
 
@@ -86,21 +95,23 @@ public class MainFrame extends JFrame {
         topContainer.setBackground(new Color(15, 23, 42));
         topContainer.setBorder(new EmptyBorder(10, 16, 10, 16));
 
-        JPanel statsPanel = new JPanel(new GridLayout(1, 4, 12, 0));
+        JPanel statsPanel = new JPanel(new GridLayout(1, 5, 10, 0));
         statsPanel.setOpaque(false);
 
         chipsLabel = createStatBadge("Chips: $1000", new Color(16, 185, 129));
         betLabel = createStatBadge("Active Bet: $0", new Color(59, 130, 246));
         countLabel = createStatBadge("Running Count: 0", new Color(245, 158, 11));
         cardsRemainingLabel = createStatBadge("Cards Left: 208", new Color(168, 85, 247));
+        dbStatsBadgeLabel = createStatBadge("DB: Checking...", new Color(14, 165, 233));
 
         statsPanel.add(chipsLabel);
         statsPanel.add(betLabel);
         statsPanel.add(countLabel);
         statsPanel.add(cardsRemainingLabel);
+        statsPanel.add(dbStatsBadgeLabel);
 
-        // Settings bar (Buy-in, Bet amount, Deck count, Shuffle, Strategy Assistor Toggle)
-        JPanel configPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 6));
+        // Settings bar (Buy-in, Bet amount, Deck count, Shuffle, Strategy Assistor Toggle, DB Stats)
+        JPanel configPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
         configPanel.setBackground(new Color(30, 41, 59));
         configPanel.setBorder(new EmptyBorder(4, 10, 4, 10));
 
@@ -108,13 +119,13 @@ public class MainFrame extends JFrame {
         betPrompt.setForeground(Color.WHITE);
         betPrompt.setFont(new Font("Segoe UI", Font.BOLD, 13));
         betSpinner = new JSpinner(new SpinnerNumberModel(50, 10, 10000, 10));
-        betSpinner.setPreferredSize(new Dimension(75, 28));
+        betSpinner.setPreferredSize(new Dimension(70, 28));
 
         JLabel deckPrompt = new JLabel("Decks:");
         deckPrompt.setForeground(Color.WHITE);
         deckPrompt.setFont(new Font("Segoe UI", Font.BOLD, 13));
         decksSpinner = new JSpinner(new SpinnerNumberModel(4, 1, 8, 1));
-        decksSpinner.setPreferredSize(new Dimension(55, 28));
+        decksSpinner.setPreferredSize(new Dimension(50, 28));
 
         shuffleButton = createSmallButton("Shuffle Shoe", new Color(71, 85, 105));
         buyInButton = createSmallButton("Buy-In (+$500)", new Color(14, 116, 144));
@@ -128,6 +139,7 @@ public class MainFrame extends JFrame {
         toggleStrategyButton.setFont(new Font("Segoe UI", Font.BOLD, 12));
 
         viewChartButton = createSmallButton("View Chart", new Color(99, 102, 241));
+        dbStatsButton = createSmallButton("DB History & Setup", new Color(2, 132, 199));
 
         shuffleButton.addActionListener(e -> manualShuffle());
         buyInButton.addActionListener(e -> promptBuyIn());
@@ -148,25 +160,24 @@ public class MainFrame extends JFrame {
             toggleStrategyButton.setText(showStrategyAssistor ? "Strategy Assistor: ON" : "Strategy Assistor: OFF");
             toggleStrategyButton.setBackground(showStrategyAssistor ? new Color(16, 185, 129) : new Color(71, 85, 105));
             String stateMsg = showStrategyAssistor ? "ENABLED" : "DISABLED";
-            log("Basic Strategy Assistor UI is now " + stateMsg + " (Console play evaluation is always active).");
+            log("Basic Strategy Assistor UI is now " + stateMsg + " (Console & PostgreSQL error logging are always active).");
             System.out.println("[Basic Strategy Assistor] Visual Assistor toggled " + stateMsg);
             refreshAllUI();
         });
         viewChartButton.addActionListener(e -> showStrategyChartDialog());
+        dbStatsButton.addActionListener(e -> showDatabaseDialog());
 
         configPanel.add(betPrompt);
         configPanel.add(betSpinner);
-        configPanel.add(Box.createHorizontalStrut(4));
         configPanel.add(deckPrompt);
         configPanel.add(decksSpinner);
         configPanel.add(shuffleButton);
         configPanel.add(buyInButton);
-        configPanel.add(Box.createHorizontalStrut(4));
         configPanel.add(toggleCountButton);
         configPanel.add(toggleCardsLeftButton);
-        configPanel.add(Box.createHorizontalStrut(4));
         configPanel.add(toggleStrategyButton);
         configPanel.add(viewChartButton);
+        configPanel.add(dbStatsButton);
 
         topContainer.add(statsPanel, BorderLayout.NORTH);
         topContainer.add(configPanel, BorderLayout.SOUTH);
@@ -241,6 +252,11 @@ public class MainFrame extends JFrame {
         logArea.setForeground(new Color(226, 232, 240));
         logArea.setMargin(new Insets(8, 12, 8, 12));
         log("Welcome to Blackjack Trainer! Shoe initialized with 4 decks (208 cards).");
+        if (dbService.isConnected()) {
+            log("PostgreSQL Connected: Recording all winnings, losses, and Basic Strategy errors.");
+        } else {
+            log("PostgreSQL Not Connected (" + dbService.getLastErrorMessage() + "). Click 'DB History & Setup' in the top bar to connect.");
+        }
 
         JScrollPane logScroll = new JScrollPane(logArea);
         logScroll.setBorder(BorderFactory.createTitledBorder(
@@ -280,14 +296,14 @@ public class MainFrame extends JFrame {
         add(actionPanel, BorderLayout.SOUTH);
     }
 
-    // ==================== BASIC STRATEGY EVALUATION & LOGGING ====================
+    // ==================== BASIC STRATEGY EVALUATION, CONSOLE & DB LOGGING ====================
 
     /**
-     * Evaluates the player's chosen action against Basic Strategy BEFORE the hand is mutated,
-     * and ALWAYS logs to the terminal console (System.out) whether the play was correct,
-     * even when the Basic Strategy Assistor toggle is switched OFF.
+     * Evaluates the player's chosen action against Basic Strategy BEFORE the hand is mutated.
+     * 1) Always logs to the terminal console (System.out) whether the play was correct or not.
+     * 2) If the play was an error, persists the error into the PostgreSQL 'basic_strategy_errors' table.
      */
-    private void evaluateAndLogPlayToConsole(PlayerAction chosenAction) {
+    private void evaluateAndLogPlay(PlayerAction chosenAction) {
         if (!roundActive || dealerHand.getCardsCount() == 0) {
             return;
         }
@@ -303,14 +319,18 @@ public class MainFrame extends JFrame {
         Advice advice = BasicStrategyAssistor.getBestPlay(activeHand, dealerUpCard, canSplit, canDouble);
         boolean isCorrect = (chosenAction == advice.recommendedAction());
 
+        String formattedHand = activeHand.formatCards();
+        int playerScore = activeHand.calculateScore();
+        String formattedUpcard = Hand.formatSingleCard(dealerUpCard);
+
         String consoleMessage;
         if (isCorrect) {
             consoleMessage = String.format(
                     "[Basic Strategy Check] CORRECT PLAY! You chose %s on %s (Score: %d) vs Dealer %s. (%s)",
                     chosenAction,
-                    activeHand.formatCards(),
-                    activeHand.calculateScore(),
-                    Hand.formatSingleCard(dealerUpCard),
+                    formattedHand,
+                    playerScore,
+                    formattedUpcard,
                     advice.explanation()
             );
         } else {
@@ -318,9 +338,19 @@ public class MainFrame extends JFrame {
                     "[Basic Strategy Check] INCORRECT PLAY! You chose %s, but Basic Strategy recommends %s on %s (Score: %d) vs Dealer %s. (%s)",
                     chosenAction,
                     advice.recommendedAction(),
-                    activeHand.formatCards(),
-                    activeHand.calculateScore(),
-                    Hand.formatSingleCard(dealerUpCard),
+                    formattedHand,
+                    playerScore,
+                    formattedUpcard,
+                    advice.explanation()
+            );
+
+            // Store Basic Strategy Error in PostgreSQL
+            dbService.recordStrategyError(
+                    formattedHand,
+                    playerScore,
+                    formattedUpcard,
+                    chosenAction.name(),
+                    advice.recommendedAction().name(),
                     advice.explanation()
             );
         }
@@ -332,6 +362,122 @@ public class MainFrame extends JFrame {
         if (showStrategyAssistor) {
             log(consoleMessage);
         }
+    }
+
+    // ==================== POSTGRESQL STATS & CONFIG DIALOG ====================
+
+    private void showDatabaseDialog() {
+        JDialog dialog = new JDialog(this, "PostgreSQL Database — Winnings, Losses & Basic Strategy Errors", true);
+        dialog.setSize(860, 560);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout(10, 10));
+
+        // Top Connection Config Bar
+        JPanel connPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 8));
+        connPanel.setBackground(new Color(30, 41, 59));
+
+        JTextField urlField = new JTextField(dbService.getJdbcUrl(), 24);
+        JTextField userField = new JTextField(dbService.getDbUsername(), 8);
+        JPasswordField passField = new JPasswordField("", 8);
+        JButton connectBtn = createSmallButton("Connect / Reconnect", new Color(16, 185, 129));
+
+        JLabel statusLabel = new JLabel(dbService.isConnected() ? "● Connected" : "● Disconnected");
+        statusLabel.setForeground(dbService.isConnected() ? new Color(74, 222, 128) : new Color(248, 113, 113));
+        statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+
+        JLabel urlLbl = new JLabel("URL:");
+        urlLbl.setForeground(Color.WHITE);
+        JLabel usrLbl = new JLabel("User:");
+        usrLbl.setForeground(Color.WHITE);
+        JLabel pwdLbl = new JLabel("Pass:");
+        pwdLbl.setForeground(Color.WHITE);
+
+        connPanel.add(statusLabel);
+        connPanel.add(urlLbl);
+        connPanel.add(urlField);
+        connPanel.add(usrLbl);
+        connPanel.add(userField);
+        connPanel.add(pwdLbl);
+        connPanel.add(passField);
+        connPanel.add(connectBtn);
+
+        // Summary KPI Bar
+        JLabel summaryBar = new JLabel("", SwingConstants.CENTER);
+        summaryBar.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        summaryBar.setBorder(new EmptyBorder(6, 10, 6, 10));
+
+        // Tables for Winnings/Losses and Strategy Errors
+        DefaultTableModel roundsModel = new DefaultTableModel(
+                new String[]{"ID", "Player Hand", "Score", "Dealer Hand", "D.Score", "Bet ($)", "Outcome", "Net ($)", "Time"}, 0
+        );
+        JTable roundsTable = new JTable(roundsModel);
+
+        DefaultTableModel errorsModel = new DefaultTableModel(
+                new String[]{"ID", "Player Hand", "Score", "Dealer Upcard", "Your Move", "Optimal Move", "Reason", "Time"}, 0
+        );
+        JTable errorsTable = new JTable(errorsModel);
+
+        Runnable reloadTables = () -> {
+            statusLabel.setText(dbService.isConnected() ? "● Connected" : "● Disconnected");
+            statusLabel.setForeground(dbService.isConnected() ? new Color(74, 222, 128) : new Color(248, 113, 113));
+
+            OverallStats stats = dbService.getOverallStats();
+            String netProfitStr = stats.netProfit() >= 0 ? "+$" + stats.netProfit() : "-$" + Math.abs(stats.netProfit());
+            summaryBar.setText(String.format(
+                    "Hands: %d   |   Wins: %d   |   Losses: %d   |   Pushes: %d   |   Total Won: +$%d   |   Total Lost: -$%d   |   Net Profit: %s   |   Strategy Errors: %d",
+                    stats.totalHandsPlayed(), stats.wins(), stats.losses(), stats.pushes(),
+                    stats.totalWinnings(), stats.totalLossesAmount(), netProfitStr, stats.totalStrategyErrors()
+            ));
+
+            roundsModel.setRowCount(0);
+            for (RoundRecord r : dbService.getRecentRounds(100)) {
+                roundsModel.addRow(new Object[]{
+                        r.id(), r.playerHand(), r.playerScore(), r.dealerHand(), r.dealerScore(),
+                        "$" + r.betAmount(), r.outcome(), (r.netChips() >= 0 ? "+$" + r.netChips() : "-$" + Math.abs(r.netChips())), r.playedAt()
+                });
+            }
+
+            errorsModel.setRowCount(0);
+            for (StrategyErrorRecord err : dbService.getRecentStrategyErrors(100)) {
+                errorsModel.addRow(new Object[]{
+                        err.id(), err.playerHand(), err.playerScore(), err.dealerUpcard(),
+                        err.chosenAction(), err.recommendedAction(), err.explanation(), err.occurredAt()
+                });
+            }
+            refreshAllUI();
+        };
+
+        connectBtn.addActionListener(e -> {
+            boolean ok = dbService.updateConnectionSettings(
+                    urlField.getText().trim(),
+                    userField.getText().trim(),
+                    new String(passField.getPassword())
+            );
+            if (ok) {
+                log("PostgreSQL connected successfully to " + urlField.getText().trim());
+                reloadTables.run();
+            } else {
+                JOptionPane.showMessageDialog(dialog,
+                        "Connection failed: " + dbService.getLastErrorMessage()
+                                + "\n\nTip: Ensure your PostgreSQL service is running and the database/password match.",
+                        "PostgreSQL Connection Error", JOptionPane.ERROR_MESSAGE);
+                reloadTables.run();
+            }
+        });
+
+        reloadTables.run();
+
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.addTab("Winnings & Losses (round_results)", new JScrollPane(roundsTable));
+        tabs.addTab("Basic Strategy Errors (basic_strategy_errors)", new JScrollPane(errorsTable));
+
+        JPanel centerBody = new JPanel(new BorderLayout());
+        centerBody.add(summaryBar, BorderLayout.NORTH);
+        centerBody.add(tabs, BorderLayout.CENTER);
+
+        dialog.add(connPanel, BorderLayout.NORTH);
+        dialog.add(centerBody, BorderLayout.CENTER);
+        dialog.setVisible(true);
     }
 
     private void showStrategyChartDialog() {
@@ -436,7 +582,7 @@ public class MainFrame extends JFrame {
     private void handleHit() {
         if (!roundActive) return;
 
-        evaluateAndLogPlayToConsole(PlayerAction.HIT);
+        evaluateAndLogPlay(PlayerAction.HIT);
 
         String drawn = player.hit(deck, currentHandIndex);
         Hand activeHand = player.getHand(currentHandIndex);
@@ -460,7 +606,7 @@ public class MainFrame extends JFrame {
     private void handleStand() {
         if (!roundActive) return;
 
-        evaluateAndLogPlayToConsole(PlayerAction.STAND);
+        evaluateAndLogPlay(PlayerAction.STAND);
 
         Hand activeHand = player.getHand(currentHandIndex);
         player.stand(currentHandIndex);
@@ -471,7 +617,7 @@ public class MainFrame extends JFrame {
     private void handleDoubleDown() {
         if (!roundActive || !player.canDouble(currentHandIndex)) return;
 
-        evaluateAndLogPlayToConsole(PlayerAction.DOUBLE);
+        evaluateAndLogPlay(PlayerAction.DOUBLE);
 
         String drawn = player.doubleHand(deck, currentHandIndex);
         Hand activeHand = player.getHand(currentHandIndex);
@@ -489,7 +635,7 @@ public class MainFrame extends JFrame {
     private void handleSplit() {
         if (!roundActive || !player.canSplit(currentHandIndex)) return;
 
-        evaluateAndLogPlayToConsole(PlayerAction.SPLIT);
+        evaluateAndLogPlay(PlayerAction.SPLIT);
 
         boolean ok = player.split(deck, currentHandIndex);
         if (ok) {
@@ -542,51 +688,73 @@ public class MainFrame extends JFrame {
         }
 
         int dScore = dealerHand.calculateScore();
+        String dHandFormatted = dealerHand.formatCards();
         boolean dealerBlackjack = (dealerHand.getCardsCount() == 2 && dScore == 21);
         StringBuilder summary = new StringBuilder();
 
         for (int i = 0; i < player.getHandCount(); i++) {
             Hand pHand = player.getHand(i);
             int pScore = pHand.calculateScore();
+            String pHandFormatted = pHand.formatCards();
             int bet = player.getHandBet(i);
             String handLabel = player.getHandCount() > 1 ? "Hand " + (i + 1) : "Player";
 
+            String outcome;
+            int netChips;
+
             if (pHand.isBusted()) {
+                outcome = "LOSS";
+                netChips = -bet;
                 String msg = handLabel + " Busted (-$" + bet + ")";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
             } else if (player.hasBlackjack(i) && player.getHandCount() == 1) {
                 if (dealerBlackjack) {
                     player.pushBet(i);
+                    outcome = "PUSH";
+                    netChips = 0;
                     String msg = "Push (Both have Blackjack)";
                     log("Result: " + msg);
                     summary.append(msg).append("   ");
                 } else {
                     int payout = player.winBet(i, 2.5); // 3:2 Blackjack payout
-                    String msg = "BLACKJACK! Won +$" + (payout - bet);
+                    outcome = "BLACKJACK";
+                    netChips = payout - bet;
+                    String msg = "BLACKJACK! Won +$" + netChips;
                     log("Result: " + msg + " (Total payout: $" + payout + ")");
                     summary.append(msg).append("   ");
                 }
             } else if (dScore > 21) {
                 player.winBet(i, 2.0);
+                outcome = "WIN";
+                netChips = bet;
                 String msg = handLabel + " Wins! Dealer Busted (+$" + bet + ")";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
             } else if (pScore > dScore) {
                 player.winBet(i, 2.0);
+                outcome = "WIN";
+                netChips = bet;
                 String msg = handLabel + " Wins " + pScore + " vs " + dScore + " (+$" + bet + ")";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
             } else if (pScore < dScore) {
+                outcome = "LOSS";
+                netChips = -bet;
                 String msg = "Dealer Wins " + dScore + " vs " + pScore + " (-$" + bet + ")";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
             } else {
                 player.pushBet(i);
+                outcome = "PUSH";
+                netChips = 0;
                 String msg = handLabel + " Push at " + pScore + " (Bet Returned)";
                 log("Result: " + msg);
                 summary.append(msg).append("   ");
             }
+
+            // Persist round winnings/losses to PostgreSQL
+            dbService.recordRoundResult(pHandFormatted, pScore, dHandFormatted, dScore, bet, outcome, netChips);
         }
 
         roundActive = false;
@@ -602,6 +770,14 @@ public class MainFrame extends JFrame {
         betLabel.setText("Active Bet: $" + (roundActive ? player.getTotalActiveBets() : betSpinner.getValue()));
         countLabel.setText("Running Count: " + (showRunningCount ? deck.getCount() : "HIDDEN"));
         cardsRemainingLabel.setText("Cards Left: " + (showCardsRemaining ? deck.cardsRemaining() : "HIDDEN"));
+
+        if (dbService.isConnected()) {
+            OverallStats stats = dbService.getOverallStats();
+            String netStr = stats.netProfit() >= 0 ? "+$" + stats.netProfit() : "-$" + Math.abs(stats.netProfit());
+            dbStatsBadgeLabel.setText(String.format("DB Net: %s | Err: %d", netStr, stats.totalStrategyErrors()));
+        } else {
+            dbStatsBadgeLabel.setText("DB: Offline (Click Setup)");
+        }
 
         // Update Basic Strategy Assistor Banner
         strategyAssistorBanner.setVisible(showStrategyAssistor);

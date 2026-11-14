@@ -15,17 +15,24 @@
     <artifactId>blackjack-trainer</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <name>blackjack-trainer</name>
-    <description>Blackjack Trainer with Spring Boot and Java Swing</description>
+    <description>Blackjack Trainer with Spring Boot, Swing, and PostgreSQL</description>
 
     <properties>
         <java.version>17</java.version>
     </properties>
 
     <dependencies>
-        <!-- Spring Boot core starter (headless = false for Swing UI) -->
+        <!-- Spring Boot core & JDBC starter -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!-- PostgreSQL JDBC Driver -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
         </dependency>
 
         <!-- Test starter -->
