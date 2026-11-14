@@ -1,4 +1,4 @@
-package BlackjackTrainer;
+package com.blackjack.trainer.model;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,27 +11,44 @@ public class Hand {
     }
 
     public void addCard(String card) {
-        this.playerCards.add(card);
+        if (card != null) {
+            this.playerCards.add(card);
+        }
     }
 
     public int calculateScore() {
         int tempScore = 0;
+        int aceCount = 0;
 
         for (String card : this.playerCards) {
             int cardValue = Integer.parseInt(card.substring(0, 2));
 
-            if (cardValue >= 11 && cardValue <= 13) {
-                cardValue = 10;
+            if (cardValue == 1) { // Ace
+                aceCount++;
+                tempScore += 11;
+            } else if (cardValue >= 11 && cardValue <= 13) {
+                tempScore += 10;
+            } else {
+                tempScore += cardValue;
             }
-            tempScore += cardValue;
         }
 
-        this.score = tempScore; // Update the class variable
+        // Adjust aces from 11 down to 1 if busted
+        while (tempScore > 21 && aceCount > 0) {
+            tempScore -= 10;
+            aceCount--;
+        }
+
+        this.score = tempScore;
         return this.score;
     }
 
     public int getCardsCount() {
         return this.playerCards.size();
+    }
+
+    public List<String> getPlayerCards() {
+        return new ArrayList<>(this.playerCards);
     }
 
     public String getCard(int index) {
@@ -47,6 +64,6 @@ public class Hand {
     }
 
     public int getScore() {
-        return this.score;
+        return calculateScore();
     }
 }
