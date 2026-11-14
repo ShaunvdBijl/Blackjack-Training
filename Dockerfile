@@ -16,7 +16,7 @@ RUN mvn clean package -DskipTests -B
 # ==============================================================================
 # Stage 2: Runtime Image with GUI / X11 & Font Libraries for Java Swing
 # ==============================================================================
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:22-jre-jammy
 
 WORKDIR /app
 
