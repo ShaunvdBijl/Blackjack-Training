@@ -27,6 +27,24 @@ class BlackjackModelTest {
     }
 
     @Test
+    void testTrueCountAndBetRecommendations() {
+        Deck deck = new Deck();
+        deck.ShuffleDeck(2); // 104 cards = 2.0 decks
+        assertEquals(2.0, deck.getDecksRemaining(), 0.01);
+        assertEquals(0.0, deck.getTrueCount(), 0.01);
+        assertEquals(1, deck.getRecommendedBetUnits());
+
+        // Simulate +6 running count with 2.0 decks remaining -> True Count = +3.0
+        for (int i = 0; i < 6; i++) {
+            deck.trackCount("02S");
+        }
+        assertEquals(6, deck.getCount());
+        assertEquals(3.0, deck.getTrueCount(), 0.01);
+        assertEquals(4, deck.getRecommendedBetUnits()); // TC 3 -> 4x bet spread
+        assertEquals(200, deck.getRecommendedBetAmount(50));
+    }
+
+    @Test
     void testHandScoreCalculationWithAce() {
         Hand hand = new Hand();
         hand.addCard("01S"); // Ace

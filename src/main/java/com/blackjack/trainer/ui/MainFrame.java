@@ -30,14 +30,17 @@ public class MainFrame extends JFrame {
     private boolean roundActive = false;
     private boolean dealerCardRevealed = false;
     private boolean showRunningCount = true;
+    private boolean showTrueCount = true;
     private boolean showCardsRemaining = true;
     private boolean showStrategyAssistor = false;
     private int currentHandIndex = 0;
+    private static final int BASE_BET_UNIT = 50;
 
     // Header labels
     private JLabel chipsLabel;
     private JLabel betLabel;
     private JLabel countLabel;
+    private JLabel trueCountLabel;
     private JLabel cardsRemainingLabel;
     private JLabel dbStatsBadgeLabel;
 
@@ -67,6 +70,7 @@ public class MainFrame extends JFrame {
     private JButton doubleButton;
     private JButton splitButton;
     private JButton toggleCountButton;
+    private JButton toggleTrueCountButton;
     private JButton toggleCardsLeftButton;
 
     public MainFrame(BlackjackDatabaseService dbService) {
@@ -95,18 +99,20 @@ public class MainFrame extends JFrame {
         topContainer.setBackground(new Color(15, 23, 42));
         topContainer.setBorder(new EmptyBorder(10, 16, 10, 16));
 
-        JPanel statsPanel = new JPanel(new GridLayout(1, 5, 10, 0));
+        JPanel statsPanel = new JPanel(new GridLayout(1, 6, 8, 0));
         statsPanel.setOpaque(false);
 
         chipsLabel = createStatBadge("Chips: $1000", new Color(16, 185, 129));
         betLabel = createStatBadge("Active Bet: $0", new Color(59, 130, 246));
         countLabel = createStatBadge("Running Count: 0", new Color(245, 158, 11));
+        trueCountLabel = createStatBadge("True Count: 0.0 (1x)", new Color(236, 72, 153));
         cardsRemainingLabel = createStatBadge("Cards Left: 208", new Color(168, 85, 247));
         dbStatsBadgeLabel = createStatBadge("DB: Checking...", new Color(14, 165, 233));
 
         statsPanel.add(chipsLabel);
         statsPanel.add(betLabel);
         statsPanel.add(countLabel);
+        statsPanel.add(trueCountLabel);
         statsPanel.add(cardsRemainingLabel);
         statsPanel.add(dbStatsBadgeLabel);
 
@@ -129,7 +135,8 @@ public class MainFrame extends JFrame {
 
         shuffleButton = createSmallButton("Shuffle Shoe", new Color(71, 85, 105));
         buyInButton = createSmallButton("Buy-In (+$500)", new Color(14, 116, 144));
-        toggleCountButton = createSmallButton("Hide Count", new Color(100, 116, 139));
+        toggleCountButton = createSmallButton("Hide Running", new Color(100, 116, 139));
+        toggleTrueCountButton = createSmallButton("Hide True Count", new Color(100, 116, 139));
         toggleCardsLeftButton = createSmallButton("Hide Cards Left", new Color(100, 116, 139));
 
         toggleStrategyButton = new JToggleButton("Strategy Assistor: OFF");
@@ -145,8 +152,17 @@ public class MainFrame extends JFrame {
         buyInButton.addActionListener(e -> promptBuyIn());
         toggleCountButton.addActionListener(e -> {
             showRunningCount = !showRunningCount;
-            toggleCountButton.setText(showRunningCount ? "Hide Count" : "View Count");
+            toggleCountButton.setText(showRunningCount ? "Hide Running" : "View Running");
             log("Running Count is now " + (showRunningCount ? "VISIBLE (" + deck.getCount() + ")" : "HIDDEN"));
+            refreshAllUI();
+        });
+        toggleTrueCountButton.addActionListener(e -> {
+            showTrueCount = !showTrueCount;
+            toggleTrueCountButton.setText(showTrueCount ? "Hide True Count" : "View True Count");
+            log(String.format("True Count is now %s", showTrueCount
+                    ? String.format("VISIBLE (%.1f | %.1f decks left | Rec. Bet: $%d [%dx])",
+                        deck.getTrueCount(), deck.getDecksRemaining(), deck.getRecommendedBetAmount(BASE_BET_UNIT), deck.getRecommendedBetUnits())
+                    : "HIDDEN"));
             refreshAllUI();
         });
         toggleCardsLeftButton.addActionListener(e -> {
@@ -174,6 +190,7 @@ public class MainFrame extends JFrame {
         configPanel.add(shuffleButton);
         configPanel.add(buyInButton);
         configPanel.add(toggleCountButton);
+        configPanel.add(toggleTrueCountButton);
         configPanel.add(toggleCardsLeftButton);
         configPanel.add(toggleStrategyButton);
         configPanel.add(viewChartButton);
@@ -542,6 +559,13 @@ public class MainFrame extends JFrame {
             log("--- Shoe low on cards! Auto-shuffled " + numDecks + " deck(s). Count reset to 0. ---");
         }
 
+        // Evaluate True Count & Bet Sizing before dealing cards
+        double preDealTrueCount = deck.getTrueCount();
+        int recBet = deck.getRecommendedBetAmount(BASE_BET_UNIT);
+        int recUnits = deck.getRecommendedBetUnits();
+        System.out.printf("[True Count Check] Pre-deal Running Count: %d | Decks Left: %.2f | True Count: %+.1f | Your Bet: $%d | Recommended Bet (%dx): $%d%n",
+                deck.getCount(), deck.getDecksRemaining(), preDealTrueCount, betAmount, recUnits, recBet);
+
         roundActive = true;
         dealerCardRevealed = false;
         currentHandIndex = 0;
@@ -769,7 +793,16 @@ public class MainFrame extends JFrame {
         chipsLabel.setText("Chips: $" + player.getChips());
         betLabel.setText("Active Bet: $" + (roundActive ? player.getTotalActiveBets() : betSpinner.getValue()));
         countLabel.setText("Running Count: " + (showRunningCount ? deck.getCount() : "HIDDEN"));
-        cardsRemainingLabel.setText("Cards Left: " + (showCardsRemaining ? deck.cardsRemaining() : "HIDDEN"));
+        if (showTrueCount) {
+            double tc = deck.getTrueCount();
+            String tcFormatted = (tc > 0 ? "+" : "") + String.format("%.1f", tc);
+            trueCountLabel.setText(String.format("True Count: %s (%dx)", tcFormatted, deck.getRecommendedBetUnits()));
+        } else {
+            trueCountLabel.setText("True Count: HIDDEN");
+        }
+        cardsRemainingLabel.setText(showCardsRemaining
+                ? String.format("Cards: %d (%.1fD)", deck.cardsRemaining(), deck.getDecksRemaining())
+                : "Cards Left: HIDDEN");
 
         if (dbService.isConnected()) {
             OverallStats stats = dbService.getOverallStats();
@@ -794,7 +827,13 @@ public class MainFrame extends JFrame {
                 strategyAssistorBanner.setText("★ Basic Strategy Assistor: Best Play is "
                         + advice.recommendedAction() + " — [" + advice.explanation() + "]");
             } else {
-                strategyAssistorBanner.setText("★ Basic Strategy Assistor: Deal a hand to see real-time optimal play advice.");
+                double tc = deck.getTrueCount();
+                int recBet = deck.getRecommendedBetAmount(BASE_BET_UNIT);
+                int recUnits = deck.getRecommendedBetUnits();
+                strategyAssistorBanner.setText(String.format(
+                        "★ Strategy & Count Assistor: True Count is %+.1f (%.1f decks left) — Optimal Bet Spread: $%d (%dx base unit)",
+                        tc, deck.getDecksRemaining(), recBet, recUnits
+                ));
             }
         }
 
