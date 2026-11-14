@@ -1,0 +1,11 @@
+# Ignore build outputs & IDE directories
+target/
+out/
+.idea/
+.vscode/
+*.iml
+.git/
+
+# Ignore local secrets (passed at runtime via docker-compose / --env-file)
+.env
+application-local.properties
