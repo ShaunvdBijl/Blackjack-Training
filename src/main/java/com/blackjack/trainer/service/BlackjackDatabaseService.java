@@ -60,6 +60,11 @@ public class BlackjackDatabaseService {
             String occurredAt
     ) {}
 
+    public record ErrorCategoryCount(
+            String category,
+            int errorCount
+    ) {}
+
     @PostConstruct
     public void initDatabase() {
         connectAndCreateSchema();
@@ -326,6 +331,91 @@ public class BlackjackDatabaseService {
             }
         } catch (SQLException e) {
             log.error("Failed to fetch recent strategy errors: {}", e.getMessage());
+        }
+        return list;
+    }
+
+    /**
+     * Returns cumulative net profit progression in chronological order (oldest to newest hand).
+     */
+    public List<Integer> getCumulativeProfitSeries() {
+        List<Integer> series = new ArrayList<>();
+        series.add(0); // Starting baseline at 0
+        if (!connected) {
+            return series;
+        }
+        String sql = "SELECT net_chips FROM round_results ORDER BY id ASC";
+        int runningTotal = 0;
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                runningTotal += rs.getInt("net_chips");
+                series.add(runningTotal);
+            }
+        } catch (SQLException e) {
+            log.error("Failed to fetch cumulative profit series: {}", e.getMessage());
+        }
+        return series;
+    }
+
+    /**
+     * Groups Basic Strategy errors by hand type (Hard Total, Soft Total, Pair Splitting) and by Recommended Action.
+     */
+    public List<ErrorCategoryCount> getErrorBreakdownByHandType() {
+        List<ErrorCategoryCount> list = new ArrayList<>();
+        if (!connected) {
+            return list;
+        }
+        String sql = """
+            SELECT
+                CASE
+                    WHEN explanation LIKE 'Pair%' THEN 'Pair Splitting'
+                    WHEN explanation LIKE 'Soft%' THEN 'Soft Totals (Ace)'
+                    ELSE 'Hard Totals'
+                END AS hand_type,
+                COUNT(*) AS cnt
+            FROM basic_strategy_errors
+            GROUP BY hand_type
+            ORDER BY cnt DESC
+        """;
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                list.add(new ErrorCategoryCount(rs.getString("hand_type"), rs.getInt("cnt")));
+            }
+        } catch (SQLException e) {
+            log.error("Failed to fetch error breakdown by hand type: {}", e.getMessage());
+        }
+        return list;
+    }
+
+    /**
+     * Returns the top most frequent Basic Strategy mistakes (e.g. "Hard 16 vs Dealer 10 -> HIT").
+     */
+    public List<ErrorCategoryCount> getTopStrategyMistakes(int limit) {
+        List<ErrorCategoryCount> list = new ArrayList<>();
+        if (!connected) {
+            return list;
+        }
+        String sql = """
+            SELECT explanation, COUNT(*) AS cnt
+            FROM basic_strategy_errors
+            GROUP BY explanation
+            ORDER BY cnt DESC
+            LIMIT ?
+        """;
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new ErrorCategoryCount(rs.getString("explanation"), rs.getInt("cnt")));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to fetch top strategy mistakes: {}", e.getMessage());
         }
         return list;
     }
