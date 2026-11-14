@@ -16,6 +16,11 @@ public class Hand {
         }
     }
 
+    public void clear() {
+        this.playerCards.clear();
+        this.score = 0;
+    }
+
     public int calculateScore() {
         int tempScore = 0;
         int aceCount = 0;
@@ -43,6 +48,15 @@ public class Hand {
         return this.score;
     }
 
+    public boolean canSplit() {
+        if (this.playerCards.size() != 2) {
+            return false;
+        }
+        String c1 = this.playerCards.get(0);
+        String c2 = this.playerCards.get(1);
+        return c1.substring(0, 2).equals(c2.substring(0, 2));
+    }
+
     public int getCardsCount() {
         return this.playerCards.size();
     }
@@ -56,7 +70,9 @@ public class Hand {
     }
 
     public void removeCard(int index) {
-        this.playerCards.remove(index);
+        if (index >= 0 && index < this.playerCards.size()) {
+            this.playerCards.remove(index);
+        }
     }
 
     public boolean isBusted() {
@@ -65,5 +81,39 @@ public class Hand {
 
     public int getScore() {
         return calculateScore();
+    }
+
+    public String formatCards() {
+        List<String> formatted = new ArrayList<>();
+        for (String card : playerCards) {
+            formatted.add(formatSingleCard(card));
+        }
+        return formatted.toString();
+    }
+
+    public static String formatSingleCard(String card) {
+        if (card == null || card.length() < 3) {
+            return String.valueOf(card);
+        }
+        String rankCode = card.substring(0, 2);
+        String suitCode = card.substring(2, 3);
+
+        String rank = switch (rankCode) {
+            case "01" -> "A";
+            case "11" -> "J";
+            case "12" -> "Q";
+            case "13" -> "K";
+            default -> String.valueOf(Integer.parseInt(rankCode));
+        };
+
+        String suit = switch (suitCode) {
+            case "S" -> "♠";
+            case "H" -> "♥";
+            case "D" -> "♦";
+            case "C" -> "♣";
+            default -> suitCode;
+        };
+
+        return rank + suit;
     }
 }

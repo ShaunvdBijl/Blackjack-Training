@@ -35,10 +35,14 @@ public class Deck {
         return playingDeck;
     }
 
-    public void trackCount(String cardRank) {
-        if ("01".equals(cardRank) || "10".equals(cardRank) || "11".equals(cardRank) || "12".equals(cardRank) || "13".equals(cardRank)) {
+    public void trackCount(String cardOrRank) {
+        if (cardOrRank == null || cardOrRank.length() < 2) {
+            return;
+        }
+        String rank = cardOrRank.substring(0, 2);
+        if ("01".equals(rank) || "10".equals(rank) || "11".equals(rank) || "12".equals(rank) || "13".equals(rank)) {
             this.count -= 1;
-        } else if ("02".equals(cardRank) || "03".equals(cardRank) || "04".equals(cardRank) || "05".equals(cardRank) || "06".equals(cardRank)) {
+        } else if ("02".equals(rank) || "03".equals(rank) || "04".equals(rank) || "05".equals(rank) || "06".equals(rank)) {
             this.count += 1;
         }
     }
@@ -49,6 +53,14 @@ public class Deck {
         }
         drawnCard = this.playingDeck.pop();
         return drawnCard;
+    }
+
+    public String drawCardAndTrack() {
+        String card = drawCard();
+        if (card != null) {
+            trackCount(card);
+        }
+        return card;
     }
 
     public int cardsRemaining() {
@@ -63,9 +75,9 @@ public class Deck {
         String rank = setDrawnCard();
         if (rank != null) {
             int cardValue = Integer.parseInt(rank);
-            if (cardValue >= 1 && cardValue <= 6) {
+            if (cardValue >= 2 && cardValue <= 6) {
                 this.count = this.count + 1;
-            } else if (cardValue >= 10 && cardValue <= 13) {
+            } else if (cardValue == 1 || (cardValue >= 10 && cardValue <= 13)) {
                 this.count = this.count - 1;
             }
         }
