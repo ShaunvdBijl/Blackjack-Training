@@ -165,7 +165,7 @@ public class MainFrame extends JFrame {
         toggleStrategyButton.setFont(new Font("Segoe UI", Font.BOLD, 12));
 
         viewChartButton = createSmallButton("View Chart", new Color(99, 102, 241));
-        dbStatsButton = createSmallButton("DB History & Setup", new Color(2, 132, 199));
+        dbStatsButton = createSmallButton("DB Dashboard", new Color(2, 132, 199));
 
         shuffleButton.addActionListener(e -> manualShuffle());
         buyInButton.addActionListener(e -> promptBuyIn());
@@ -405,8 +405,8 @@ public class MainFrame extends JFrame {
     // ==================== POSTGRESQL STATS & CONFIG DIALOG ====================
 
     private void showDatabaseDialog() {
-        JDialog dialog = new JDialog(this, "PostgreSQL Database — Winnings, Losses & Basic Strategy Errors", true);
-        dialog.setSize(860, 560);
+        JDialog dialog = new JDialog(this, "PostgreSQL Analytics Dashboard — Winnings, Losses & Strategy Mistakes", true);
+        dialog.setSize(980, 650);
         dialog.setLocationRelativeTo(this);
         dialog.setLayout(new BorderLayout(10, 10));
 
@@ -418,6 +418,7 @@ public class MainFrame extends JFrame {
         JTextField userField = new JTextField(dbService.getDbUsername(), 8);
         JPasswordField passField = new JPasswordField("", 8);
         JButton connectBtn = createSmallButton("Connect / Reconnect", new Color(16, 185, 129));
+        JButton refreshBtn = createSmallButton("Refresh Stats", new Color(59, 130, 246));
 
         JLabel statusLabel = new JLabel(dbService.isConnected() ? "● Connected" : "● Disconnected");
         statusLabel.setForeground(dbService.isConnected() ? new Color(74, 222, 128) : new Color(248, 113, 113));
@@ -438,11 +439,15 @@ public class MainFrame extends JFrame {
         connPanel.add(pwdLbl);
         connPanel.add(passField);
         connPanel.add(connectBtn);
+        connPanel.add(refreshBtn);
 
         // Summary KPI Bar
         JLabel summaryBar = new JLabel("", SwingConstants.CENTER);
         summaryBar.setFont(new Font("Segoe UI", Font.BOLD, 14));
         summaryBar.setBorder(new EmptyBorder(6, 10, 6, 10));
+
+        // Visual Analytics Dashboard Panel
+        StatsDashboardPanel dashboardPanel = new StatsDashboardPanel(dbService);
 
         // Tables for Winnings/Losses and Strategy Errors
         DefaultTableModel roundsModel = new DefaultTableModel(
@@ -455,7 +460,7 @@ public class MainFrame extends JFrame {
         );
         JTable errorsTable = new JTable(errorsModel);
 
-        Runnable reloadTables = () -> {
+        Runnable reloadAll = () -> {
             statusLabel.setText(dbService.isConnected() ? "● Connected" : "● Disconnected");
             statusLabel.setForeground(dbService.isConnected() ? new Color(74, 222, 128) : new Color(248, 113, 113));
 
@@ -466,6 +471,8 @@ public class MainFrame extends JFrame {
                     stats.totalHandsPlayed(), stats.wins(), stats.losses(), stats.pushes(),
                     stats.totalWinnings(), stats.totalLossesAmount(), netProfitStr, stats.totalStrategyErrors()
             ));
+
+            dashboardPanel.refreshData();
 
             roundsModel.setRowCount(0);
             for (RoundRecord r : dbService.getRecentRounds(100)) {
@@ -493,19 +500,23 @@ public class MainFrame extends JFrame {
             );
             if (ok) {
                 log("PostgreSQL connected successfully to " + urlField.getText().trim());
-                reloadTables.run();
+                reloadAll.run();
             } else {
                 JOptionPane.showMessageDialog(dialog,
                         "Connection failed: " + dbService.getLastErrorMessage()
                                 + "\n\nTip: Ensure your PostgreSQL service is running and the database/password match.",
                         "PostgreSQL Connection Error", JOptionPane.ERROR_MESSAGE);
-                reloadTables.run();
+                reloadAll.run();
             }
         });
 
-        reloadTables.run();
+        refreshBtn.addActionListener(e -> reloadAll.run());
+
+        reloadAll.run();
 
         JTabbedPane tabs = new JTabbedPane();
+        tabs.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        tabs.addTab("Analytics Dashboard", dashboardPanel);
         tabs.addTab("Winnings & Losses (round_results)", new JScrollPane(roundsTable));
         tabs.addTab("Basic Strategy Errors (basic_strategy_errors)", new JScrollPane(errorsTable));
 
