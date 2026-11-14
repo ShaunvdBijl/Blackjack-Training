@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Keep Maven dependencies (Spring Boot, PostgreSQL driver, JUnit) up to date
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # Keep Dockerfile base images up to date
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Keep GitHub Actions workflow versions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
